@@ -596,29 +596,15 @@ static int nlinkfs_access(const char *path, int mask)
 static int nlinkfs_chmod(const char *path, mode_t mode)
 {
 	GString *rpath = NULL;
-	GList *llist = nlk_getdata->links_list;
 	int ret = 0;
-	GList *element;
 
-	/* First we check if the file is a symbolic link 
-	 *
-	 * FIXME: FUSE is always following symbolic links, so
-	 * the IF below is useless, since will never pass on the codition
+	/* We don't need to check if the file is a symbolic link 
+	 * because chmod never change attributes of symbolic links
 	 */
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
-		rpath = get_realpath(rpath, path);
-		rpath = g_string_append(rpath, ".LNK");
-
-		/* Change mode of the .LNK file */
-		ret = chmod(rpath->str, mode);
-
-		g_string_free(rpath, TRUE);
-	} else {
-		rpath = get_realpath(rpath, path);
-		ret = chmod(rpath->str, mode);
-		g_string_free(rpath, TRUE);
-	}
-	
+	rpath = get_realpath(rpath, path);
+	ret = chmod(rpath->str, mode);
+	g_string_free(rpath, TRUE);
+		
 	return ret;
 }
 
@@ -634,11 +620,7 @@ static int nlinkfs_chown(const char *path, uid_t uid, gid_t gid)
 	int ret = 0;
 	GList *element;
 
-	/* First we check if the file is a symbolic link 
-	 *
-	 * FIXME: FUSE is always following symbolic links, so
-	 * the IF below is useless, since will never pass on the codition
-	 */
+	/* First we check if the file is a symbolic link */
 	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
 		rpath = get_realpath(rpath, path);
 		rpath = g_string_append(rpath, ".LNK");
