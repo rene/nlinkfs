@@ -209,11 +209,11 @@ static int nlinkfs_unlink(const char *path)
 		rpath = get_realpath(rpath, path);
 		rpath = g_string_append(rpath, ".LNK");
 
-		/* Remove .LNK file */
-		ret = unlink(rpath->str);
-
 		/* Remove from list */
 		llist = g_list_remove_mt(llist, element);
+
+		/* Remove .LNK file */
+		ret = unlink(rpath->str);
 
 		g_string_free(rpath, TRUE);
 	} else {
