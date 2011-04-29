@@ -20,7 +20,7 @@ AC_SUBST(FUSE_CFLAGS)
 AC_SUBST(FUSE_LIBS)
 
 # Checks for header files.
-AC_CHECK_HEADERS([errno.h sys/types.h sys/stat.h fcntl.h unistd.h utime.h dirent.h glib.h])
+AC_CHECK_HEADERS([errno.h sys/types.h sys/stat.h fcntl.h unistd.h utime.h dirent.h glib.h semaphore.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 # Checks for library functions.

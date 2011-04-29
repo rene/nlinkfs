@@ -30,8 +30,44 @@
 #include <utime.h>
 #include <dirent.h>
 #include <glib.h>
+#include <semaphore.h>
 
 #include <nlinkfs.h>
+
+/** semaphore to make add/remove linked list operations atomic */
+sem_t mutex_llist;
+
+/* Linked list operations with mutex */
+
+inline GList *g_list_append_mt(GList *list, gpointer data)
+{
+	GList *ret;
+
+	sem_wait(&mutex_llist);
+	ret = g_list_append(list, data);
+	sem_post(&mutex_llist);
+
+	return ret;
+}
+
+inline GList *g_list_remove_mt(GList *list, gpointer data)
+{
+	GList *ret;
+
+	sem_wait(&mutex_llist);
+	ret = g_list_remove(list, data);
+	sem_post(&mutex_llist);
+
+	return ret;
+}
+
+inline void g_list_free_mt(GList *list)
+{
+	sem_wait(&mutex_llist);
+	g_list_free(list);
+	sem_post(&mutex_llist);
+}
+/*************************************/
 
 /**
  * get_realpath
@@ -97,7 +133,7 @@ static void insert_link(nlk_slink *newlink)
 	GList *llist = nlk_getdata->links_list;
 
 	if (g_list_find_custom(llist, newlink->lfilename->str, compare_link) == NULL) {
-		nlk_getdata->links_list = g_list_append(llist, newlink);
+		nlk_getdata->links_list = g_list_append_mt(llist, newlink);
 	}
 }
 
@@ -120,10 +156,10 @@ void clear_slist(void)
 		if (link != NULL) {
 			g_string_free(link->lfilename, TRUE);
 			g_string_free(link->path, TRUE);
-			nlk_getdata->links_list = g_list_remove(slist, element);
+			nlk_getdata->links_list = g_list_remove_mt(slist, element);
 		}
 	}
-	g_list_free(slist);
+	g_list_free_mt(slist);
 	nlk_getdata->links_list = NULL;
 }
 
@@ -177,7 +213,7 @@ static int nlinkfs_unlink(const char *path)
 		ret = unlink(rpath->str);
 
 		/* Remove from list */
-		llist = g_list_remove(llist, element);
+		llist = g_list_remove_mt(llist, element);
 
 		g_string_free(rpath, TRUE);
 	} else {
@@ -770,6 +806,7 @@ static int nlinkfs_flush(const char *path, struct fuse_file_info *fi)
 void nlinkfs_destroy(void *userdata)
 {
 	clear_slist();
+	sem_destroy(&mutex_llist);
 }
 
 /* ------------------------------------------------- */
@@ -816,6 +853,11 @@ int main(int argc, const char *argv[])
 	int i;
 	int ret;
 	nlk_data *nlinkfs_data;
+
+	if (sem_init(&mutex_llist, 0, 1) < 0) {
+		perror("Could not initialize semaphore.\n");
+		return EXIT_FAILURE;
+	}
 
 	/**
 	 * FIXME: Do a decent argument parser...
