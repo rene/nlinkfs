@@ -30,44 +30,11 @@
 #include <utime.h>
 #include <dirent.h>
 #include <glib.h>
-#include <semaphore.h>
-
 #include <nlinkfs.h>
 
-/** semaphore to make add/remove linked list operations atomic */
-sem_t mutex_llist;
 
-/* Linked list operations with mutex */
+#define DEBUG(fmt, ...) { FILE *fp; fp=fopen("/tmp/nlinkfs", "a+"); fprintf(fp, fmt, ##__VA_ARGS__); fclose(fp); }
 
-inline GList *g_list_append_mt(GList *list, gpointer data)
-{
-	GList *ret;
-
-	sem_wait(&mutex_llist);
-	ret = g_list_append(list, data);
-	sem_post(&mutex_llist);
-
-	return ret;
-}
-
-inline GList *g_list_remove_mt(GList *list, gpointer data)
-{
-	GList *ret;
-
-	sem_wait(&mutex_llist);
-	ret = g_list_remove(list, data);
-	sem_post(&mutex_llist);
-
-	return ret;
-}
-
-inline void g_list_free_mt(GList *list)
-{
-	sem_wait(&mutex_llist);
-	g_list_free(list);
-	sem_post(&mutex_llist);
-}
-/*************************************/
 
 /**
  * get_realpath
@@ -82,85 +49,66 @@ static GString *get_realpath(GString *rpath, const char *mpath)
 }
 
 /**
- * create_link_st
- *
- * Create the symbolic link structure
+ * get_nlinkfs
+ * Read nlinkfs .LNK file and return where the link points to
  */
-static nlk_slink *create_link_st(const char *path, const char *filename, const char *link)
+static GString *get_nlinkfs(const char *path)
 {
-	nlk_slink *newlink;
-	GString *lfile;
+	GString *link;
+	struct stat buf;
+	char *contents;
+	int fd;
 
-	newlink = (nlk_slink*)g_malloc(sizeof(nlk_slink));
-	if (newlink == NULL) {
+	if (lstat(path, &buf) < 0) {
 		return NULL;
 	}
 
-	lfile = g_string_new(path);
-	
-	if (path != NULL && strlen(path) > 0) {
-		if (path[strlen(path) - 1] != '/') {
-			g_string_append(lfile,"/");
+	/* There is a .LNK file, check if it's a NLINKFS file */
+	contents = g_malloc(buf.st_size);
+	if (contents == NULL) {
+		return NULL;
+	} else {
+		if ((fd = open(path, O_RDONLY)) < 0) {
+			g_free(contents);
+			return NULL;
+		} else {
+			if (read(fd, contents, buf.st_size) < buf.st_size) {
+				g_free(contents);
+				close(fd);
+				return NULL;
+			}
+			close(fd);
 		}
 	}
 
-	lfile = g_string_append(lfile, filename);
-	newlink->lfilename = lfile;
-	newlink->path = g_string_new(link);
-
-	return newlink;
-}
-
-/**
- * compare_link
- *
- * Compare list elements path
- */
-gint compare_link(gconstpointer a, gconstpointer b)
-{
-	nlk_slink *linka = (nlk_slink*)a;
-	char *path = (char*)b;
-	return strcmp(linka->lfilename->str, path);
-}
-
-/**
- * insert_link
- *
- * Insert a new link into the list
- */
-static void insert_link(nlk_slink *newlink)
-{
-	GList *llist = nlk_getdata->links_list;
-
-	if (g_list_find_custom(llist, newlink->lfilename->str, compare_link) == NULL) {
-		nlk_getdata->links_list = g_list_append_mt(llist, newlink);
+	if (strncmp(contents, NLINKFS_MAGIC, NLINKFS_MAGIC_SIZE) == 0) {
+		link = g_string_new(&contents[NLINKFS_MAGIC_SIZE+1]);
+		link->str[buf.st_size - NLINKFS_MAGIC_SIZE - 1] = '\0';
+	} else {
+		link = NULL;
 	}
+
+	g_free(contents);
+	return link;
 }
 
 /**
- * clear_slist
+ * is_nlinkfs
  *
- * Clear symbolic links list
+ * Return where the symbolic points to if the path is really a symbolic
+ * link. If the path isn't a symbolic link, return NULL.
  */
-void clear_slist(void)
+static GString *is_nlinkfs(const char *path)
 {
-	GList *slist = nlk_getdata->links_list;
-	GList *element;
-	nlk_slink *link;
-	int i;
+	GString *rpath = NULL;
+	GString *link;
 
-	for (i = 0; i < g_list_length(slist); i++) {
-		element = g_list_nth(slist, i);
-		link = (nlk_slink*)element->data;
+	rpath = get_realpath(rpath, path);
+	rpath = g_string_append(rpath, ".LNK");
+	link  = get_nlinkfs(rpath->str);
 
-		if (link != NULL) {
-			g_string_free(link->lfilename, TRUE);
-			g_string_free(link->path, TRUE);
-			nlk_getdata->links_list = g_list_remove_mt(slist, element);
-		}
-	}
-	g_list_free_mt(slist);
-	nlk_getdata->links_list = NULL;
+	g_string_free(rpath, TRUE);
+	return link;
 }
 
 
@@ -201,16 +149,11 @@ static int nlinkfs_mknod(const char *path, mode_t mode, dev_t dev)
 static int nlinkfs_unlink(const char *path)
 {
 	GString *rpath = NULL;
-	GList *llist = nlk_getdata->links_list;
 	int ret = 0;
-	GList *element;
 
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
+	if ( is_nlinkfs(path) ) {
 		rpath = get_realpath(rpath, path);
 		rpath = g_string_append(rpath, ".LNK");
-
-		/* Remove from list */
-		llist = g_list_remove_mt(llist, element);
 
 		/* Remove .LNK file */
 		ret = unlink(rpath->str);
@@ -242,7 +185,6 @@ static int nlinkfs_symlink(const char *path, const char *link)
 	int fd;
 	ssize_t w1, w2, w3, s1, s2, s3;
 	GString *rpath = NULL;
-	nlk_slink *newlink;
 
 	rpath = get_realpath(rpath, link);
 	rpath = g_string_append(rpath, ".LNK");
@@ -265,17 +207,6 @@ static int nlinkfs_symlink(const char *path, const char *link)
 		return -EIO;
 	}
 
-
-	/* Now add the "virtual" symbolic link */
-	newlink = (nlk_slink*)g_malloc(sizeof(nlk_slink));
-	if (newlink == NULL) {
-		g_string_free(rpath, TRUE);
-		return -ENOMEM;
-	}
-	newlink->lfilename = g_string_new(link);
-	newlink->path = g_string_new(path);
-	insert_link(newlink);
-
 	g_string_free(rpath, TRUE);
 	return 0;
 }
@@ -288,32 +219,26 @@ static int nlinkfs_symlink(const char *path, const char *link)
 static int nlinkfs_getattr(const char *path, struct stat *stbuf)
 {
 	GString *rpath = NULL;
-	GList *llist = nlk_getdata->links_list;
+	GString *link;
 	int ret = 0;
-	GList *element;
-	nlk_slink *slink;
 
-	/* First we check if the file is a symbolic link */
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
-		rpath = get_realpath(rpath, path);
+	rpath = get_realpath(rpath, path);
+
+	if ( (link = is_nlinkfs(path)) ) {
 		rpath = g_string_append(rpath, ".LNK");
-
-		slink = (nlk_slink*)element->data;
-
-		/* Give the same permission of file .LNK */
-		ret = lstat(rpath->str, stbuf);
+		ret   = lstat(rpath->str, stbuf);
+		
+		/* We don't need to care about symbolic link permissions */
+		stbuf->st_mode |= (S_IRWXU | S_IRWXG | S_IRWXO);
 
 		/* Change mode to symbolic link */
 		stbuf->st_mode |= S_IFLNK;
 
-		/* Change the size of file to the length of the pathname it contains */
-		stbuf->st_size = strlen(slink->path->str);
-
-		g_string_free(rpath, TRUE);
+		/* Set file size to the length of path where it points to */
+		stbuf->st_size = strlen(link->str);
+		g_string_free(link, TRUE);
 	} else {
-		rpath = get_realpath(rpath, path);
 		ret = lstat(rpath->str, stbuf);
-		g_string_free(rpath, TRUE);
 	}
 	
 	if (ret < 0) {
@@ -331,29 +256,20 @@ static int nlinkfs_getattr(const char *path, struct stat *stbuf)
 static int nlinkfs_readlink(const char *path, char *buf, size_t size)
 {
 	ssize_t llen;
-	GString *rpath = NULL;
-	GList *llist = nlk_getdata->links_list;
-	GList *element;
-	nlk_slink *slink;
-
+	GString *link;
 
 	/* Check if the file is really a symbolic link */
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
-		rpath = get_realpath(rpath, path);
-		rpath = g_string_append(rpath, ".LNK");
-
-		slink = (nlk_slink*)element->data;
-
-		llen = strlen(slink->path->str);
+	if ( (link = is_nlinkfs(path)) ) {
+		llen = strlen(link->str);
 
 		if (size < 0) {
 			return -EFAULT;
 		} else {
 			if (llen > size) {
-				strncpy(buf, slink->path->str, size);
+				strncpy(buf, link->str, size);
 				buf[size] = '\0';
 			} else {
-				strncpy(buf, slink->path->str, llen);
+				strncpy(buf, link->str, llen);
 				buf[llen] = '\0';
 			}
 			return 0;
@@ -439,18 +355,12 @@ static int nlinkfs_closedir(const char *path, struct fuse_file_info *fi)
  */
 static int nlinkfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
-	int fd;
-	off_t fsize, slen;
 	DIR *dp;
 	struct dirent *de;
-	size_t i, len;
+	size_t len;
 	char islnk = 0;
 	GString *rpath = NULL;
 	GString *linkp;
-	char magic[NLINKFS_MAGIC_SIZE];
-	char *lpath;
-	nlk_slink *nlink;
-
 
 	/* open source directory */
 	rpath = get_realpath(rpath, path);
@@ -476,58 +386,13 @@ static int nlinkfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, 
 				linkp = g_string_append(linkp, "/");
 				linkp = g_string_append(linkp, de->d_name);
 
-				fd = open(linkp->str, O_RDONLY);
-				if (fd < 0) {
-					islnk = 0;
+				if ( get_nlinkfs(linkp->str) ) {
+					islnk = 1;
+					de->d_name[len] = '\0';
+					g_string_free(linkp, TRUE);
+					filler(buf, de->d_name, NULL, 0);
 				} else {
-					fsize = lseek(fd, 0, SEEK_END);
-					lseek(fd, 0, SEEK_SET);
-
-					if (read(fd, magic, sizeof(char) * NLINKFS_MAGIC_SIZE) < NLINKFS_MAGIC_SIZE) {
-						islnk = 0;
-					} else {
-						/* check magic */
-						if (strncmp(magic, NLINKFS_MAGIC, NLINKFS_MAGIC_SIZE) == 0) {
-							/* Create symbolic link structure */
-							islnk = 1;
-							slen = fsize - lseek(fd, 1, SEEK_CUR); /* 1 = skip carrige return */
-							
-							lpath = (char*)g_malloc(sizeof(char) * (slen + 1));
-							if (lpath == NULL) {
-								close(fd);
-								continue;
-							}
-							if (read(fd, lpath, sizeof(char) * slen) < slen) {
-								close(fd);
-								continue;
-							} else {
-								/* Get just the path, remove other parts of the file */
-								for (i = 0; i < slen; i++) {
-									if (lpath[i] == '\n') {
-										slen = i;
-										break;
-									}
-								}
-								lpath[slen] = '\0';
-
-								/* Add to the list */
-								de->d_name[len] = '\0';
-								nlink = create_link_st(path, de->d_name, lpath);
-								g_free(lpath);
-								if (nlink == NULL) {
-									close(fd);
-									continue;
-								} else {
-									/* Finally, add to the list and to the dir */
-									insert_link(nlink);
-									filler(buf, de->d_name, NULL, 0);
-								}
-							}
-						} else {
-							islnk = 0;
-						}
-					}
-					close(fd);
+					islnk = 0;
 				}
 			} else {
 				islnk = 0;
@@ -652,12 +517,10 @@ static int nlinkfs_chmod(const char *path, mode_t mode)
 static int nlinkfs_chown(const char *path, uid_t uid, gid_t gid)
 {
 	GString *rpath = NULL;
-	GList *llist = nlk_getdata->links_list;
 	int ret = 0;
-	GList *element;
 
 	/* First we check if the file is a symbolic link */
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
+	if ( is_nlinkfs(path) ) {
 		rpath = get_realpath(rpath, path);
 		rpath = g_string_append(rpath, ".LNK");
 
@@ -683,11 +546,9 @@ static int nlinkfs_rename(const char *path, const char *newpath)
 {
 	GString *rpath = NULL;
 	GString *dpath = NULL;
-	GList *llist = nlk_getdata->links_list;
 	int ret = 0;
-	GList *element;
 
-	if ((element = g_list_find_custom(llist, path, compare_link)) != NULL) {
+	if ( is_nlinkfs(path) ) {
 		rpath = get_realpath(rpath, path);
 		rpath = g_string_append(rpath, ".LNK");
 
@@ -796,19 +657,6 @@ static int nlinkfs_flush(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
-/* --- */
-
-/**
- * destroy callback
- *
- * Called on filesystem exit
- */
-void nlinkfs_destroy(void *userdata)
-{
-	clear_slist();
-	sem_destroy(&mutex_llist);
-}
-
 /* ------------------------------------------------- */
 
 /**
@@ -839,7 +687,7 @@ static struct fuse_operations nlinkfs_opfs = {
 	.fsync = nlinkfs_fsync,
 	.flush = nlinkfs_flush,
 	.fsyncdir = nlinkfs_fsyncdir,
-	.destroy = nlinkfs_destroy,
+	.destroy = NULL,
 	/* deprecated */
 	.getdir = NULL,
 };
@@ -853,11 +701,7 @@ int main(int argc, const char *argv[])
 	int i;
 	int ret;
 	nlk_data *nlinkfs_data;
-
-	if (sem_init(&mutex_llist, 0, 1) < 0) {
-		perror("Could not initialize semaphore.\n");
-		return EXIT_FAILURE;
-	}
+	size_t slen;
 
 	/**
 	 * FIXME: Do a decent argument parser...
@@ -865,13 +709,16 @@ int main(int argc, const char *argv[])
 	nlinkfs_data = (nlk_data*)g_malloc(sizeof(nlk_data));
 	if (nlinkfs_data == NULL) {
 		return EXIT_FAILURE;
-	} else {
-		nlinkfs_data->links_list = NULL;
 	}
 
 	for (i = 0; i < argc; i++) {
 		if (i == 1) {
-			nlinkfs_data->srcdir = strdup(argv[i]);
+			slen = strlen(argv[i]);
+			if (argv[i][slen-1] == '/') {
+				slen--;
+			}
+			nlinkfs_data->srcdir = strndup(argv[i], slen);
+			nlinkfs_data->srcdir[slen] = '\0';
 		} else {
 			fuse_opt_add_arg(&args, argv[i]);
 		}

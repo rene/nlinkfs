@@ -27,20 +27,13 @@
 	#include <fuse.h>
 	#include <fuse_opt.h>
 
-	#define NLINKFS_MAGIC "NLINKFS"
+	#define NLINKFS_MAGIC      "NLINKFS"
 	#define NLINKFS_MAGIC_SIZE 7
 
 	#define nlk_getdata ((struct _nlinkfs_data *) fuse_get_context()->private_data)
 
-	/* Symbolic link structure */
-	struct _nlinkfs_slink {
-		GString *lfilename;
-		GString *path;
-	};
-
 	/* nlinkfs data passed through fuse */
 	struct _nlinkfs_data {
-		GList *links_list;
 		char *srcdir;
 	};
 
