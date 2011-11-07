@@ -29,7 +29,7 @@
 #include <unistd.h>
 #include <utime.h>
 #include <dirent.h>
-#include <glib.h>
+#include <glib-2.0/glib.h>
 #include <nlinkfs.h>
 
 

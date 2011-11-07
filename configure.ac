@@ -1,13 +1,14 @@
 ##
 # NLINKFS configure.ac
 #
-AC_INIT([nlinkfs], 0.1, [rene@renesp.com.br])
+AC_INIT([nlinkfs], 0.2, [rene@renesp.com.br])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 
 # Checks for programs.
 AC_PROG_CC
 
 # Checks for libraries.
+AC_CHECK_LIB([glib-2.0],[g_malloc],,AC_MSG_ERROR([ERROR! glib-2.0 not found...]))
 GLIB_CFLAGS=`pkg-config --cflags glib-2.0`
 GLIB_LIBS=`pkg-config --libs glib-2.0`
 AC_SUBST(GLIB_CFLAGS)

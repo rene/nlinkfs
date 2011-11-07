@@ -49,8 +49,6 @@ PROGRAMS = $(bin_PROGRAMS)
 am_nlinkfs_OBJECTS = nlinkfs.$(OBJEXT)
 nlinkfs_OBJECTS = $(am_nlinkfs_OBJECTS)
 nlinkfs_LDADD = $(LDADD)
-nlinkfs_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(nlinkfs_LDFLAGS) \
-	$(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -155,8 +153,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AM_CPPFLAGS = -Wall $(GLIB_CFLAGS) $(FUSE_CFLAGS)
-nlinkfs_SOURCES = nlinkfs.c
-nlinkfs_LDFLAGS = $(FUSE_LIBS) $(GLIB_LIBS)
+nlinkfs_SOURCES = nlinkfs.c nlinkfs.h
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -248,7 +245,7 @@ clean-binPROGRAMS:
 	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
 nlinkfs$(EXEEXT): $(nlinkfs_OBJECTS) $(nlinkfs_DEPENDENCIES) 
 	@rm -f nlinkfs$(EXEEXT)
-	$(nlinkfs_LINK) $(nlinkfs_OBJECTS) $(nlinkfs_LDADD) $(LIBS)
+	$(LINK) $(nlinkfs_OBJECTS) $(nlinkfs_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
