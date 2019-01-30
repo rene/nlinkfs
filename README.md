@@ -21,7 +21,7 @@ For more information, see INSTALL file.
 NLINKFS uses the follow syntax:
 
 ```bash
-$ nlinkfs **<source_dir>** **<mount_dir>**
+$ nlinkfs <source_dir> <mount_dir>
 ```
 
 * **<source_dir>** - Original file system directory
