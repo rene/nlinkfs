@@ -7,9 +7,11 @@ on the original fs.
 
 ## How to install
 
+```bash
 $ ./configure
 $ make
 $ make install # (as root)
+```
 
 For more information, see INSTALL file.
 
@@ -18,10 +20,12 @@ For more information, see INSTALL file.
 
 NLINKFS uses the follow syntax:
 
+```bash
 $ nlinkfs **<source_dir>** **<mount_dir>**
+```
 
-**<source_dir>** - Original file system directory
-**<mount_dir>** - Directory to mount NLINKFS file system
+* **<source_dir>** - Original file system directory
+* **<mount_dir>** - Directory to mount NLINKFS file system
 
 Each symbolic link created at **<mount_dir>** will be converted to a regular .LNK
 file at **<source_dir>** with the information to where the link points to. In the
@@ -31,6 +35,7 @@ common .LNK (non link) files are allowed.
 
 Example of usage:
 
+```bash
 $ mkdir {test,mdir}
 $ touch test/hello.txt
 $ nlinkfs test mdir
@@ -38,7 +43,7 @@ $ cd mdir
 $ ln -s hello.txt mylink
 $ cd ..
 $ fusermount -u mdir
-
+```
 
 ## Bug Reports
 
