@@ -446,8 +446,7 @@ static int nlinkfs_open(const char *path, struct fuse_file_info *fi)
  */
 static int nlinkfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-	lseek(fi->fh, offset, SEEK_SET);
-	return read(fi->fh, buf, size);
+	return pread(fi->fh, buf, size, offset);
 }
 
 /**
@@ -457,8 +456,7 @@ static int nlinkfs_read(const char *path, char *buf, size_t size, off_t offset, 
  */
 static int nlinkfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-	lseek(fi->fh, offset, SEEK_SET);
-	return write(fi->fh, buf, size);
+	return pwrite(fi->fh, buf, size, offset);
 }
 
 /**
