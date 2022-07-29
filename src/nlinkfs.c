@@ -440,6 +440,29 @@ static int nlinkfs_open(const char *path, struct fuse_file_info *fi)
 }
 
 /**
+ * create callback
+ *
+ * Call open() with mode argument
+ */
+static int nlinkfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	int fd;
+	GString *rpath = NULL;
+
+	rpath = get_realpath(rpath, path);
+	fd = open(rpath->str, fi->flags, mode);
+	g_string_free(rpath, TRUE);
+
+	fi->fh = fd;
+
+	if (fd < 0) {
+		return fd;
+	} else {
+		return 0;
+	}
+}
+
+/**
  * read callback
  *
  * Call read()
@@ -671,6 +694,7 @@ static struct fuse_operations nlinkfs_opfs = {
 	.readdir = nlinkfs_readdir,
 	.rmdir = nlinkfs_rmdir,
 	.open = nlinkfs_open,
+	.create = nlinkfs_create,
 	.read = nlinkfs_read,
 	.write = nlinkfs_write,
 	.release = nlinkfs_close,
