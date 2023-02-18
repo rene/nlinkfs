@@ -102,10 +102,19 @@ static GString *is_nlinkfs(const char *path)
 {
 	GString *rpath = NULL;
 	GString *link;
+	struct stat sb;
 
 	rpath = get_realpath(rpath, path);
-	rpath = g_string_append(rpath, ".LNK");
-	link  = get_nlinkfs(rpath->str);
+
+	/* Test if there is a file with the same path. If so, do not consider the
+	 * .LNK as a nlinkfs link
+	 */
+	if (stat(rpath->str, &sb) == 0) {
+		link = NULL;
+	} else {
+		rpath = g_string_append(rpath, ".LNK");
+		link  = get_nlinkfs(rpath->str);
+	}
 
 	g_string_free(rpath, TRUE);
 	return link;
@@ -267,10 +276,10 @@ static int nlinkfs_readlink(const char *path, char *buf, size_t size)
 		} else {
 			if (llen > size) {
 				strncpy(buf, link->str, size);
-				buf[size] = '\0';
+				buf[size-1] = '\0';
 			} else {
 				strncpy(buf, link->str, llen);
-				buf[llen] = '\0';
+				buf[llen-1] = '\0';
 			}
 			return 0;
 		}
@@ -357,8 +366,10 @@ static int nlinkfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, 
 {
 	DIR *dp;
 	struct dirent *de;
+	struct stat sb;
 	size_t len;
 	char islnk = 0;
+	int fexist = 0;
 	GString *rpath = NULL;
 	GString *linkp;
 
@@ -380,19 +391,30 @@ static int nlinkfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, 
 		if (len >= 4) {
 			len -= 4;
 			if (strncmp(&de->d_name[len], ".LNK", 4) == 0) {
-				/* We have a possible LNK file,
-				 * open it to check */
+				/* We have a possible LNK file, but before open it to check, we
+				 * need to test if there is a file with the same path. If so,
+				 * we should show the .LNK file as a regular file.
+				 */
 				linkp = g_string_new(rpath->str);
 				linkp = g_string_append(linkp, "/");
-				linkp = g_string_append(linkp, de->d_name);
 
-				if ( get_nlinkfs(linkp->str) ) {
-					islnk = 1;
-					de->d_name[len] = '\0';
-					g_string_free(linkp, TRUE);
-					filler(buf, de->d_name, NULL, 0);
-				} else {
+				de->d_name[len] = '\0';
+				linkp  = g_string_append(linkp, de->d_name);
+				fexist = stat(linkp->str, &sb);
+				de->d_name[len] = '.';
+				linkp  = g_string_append(linkp, ".LNK");
+
+				if (fexist == 0) {
 					islnk = 0;
+				} else {
+					if ( get_nlinkfs(linkp->str) ) {
+						islnk = 1;
+						de->d_name[len] = '\0';
+						g_string_free(linkp, TRUE);
+						filler(buf, de->d_name, NULL, 0);
+					} else {
+						islnk = 0;
+					}
 				}
 			} else {
 				islnk = 0;
