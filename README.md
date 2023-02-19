@@ -8,6 +8,7 @@ on the original fs.
 ## How to install
 
 ```bash
+$ ./autogen.sh
 $ ./configure
 $ make
 $ make install # (as root)

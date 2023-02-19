@@ -32,6 +32,19 @@
 
 	#define nlk_getdata ((struct _nlinkfs_data *) fuse_get_context()->private_data)
 
+#ifdef DEBUG
+	/* Write debug messages to file  */
+	#define debugf(fmt, ...) { \
+			FILE *fp; \
+			fp=fopen("/tmp/nlinkfs", "a+"); \
+			fprintf(fp, fmt, ##__VA_ARGS__); \
+			fclose(fp); \
+		}
+#else
+	/* Debug messages disabled */
+	#define debugf(fmt, ...)
+#endif
+
 	/* nlinkfs data passed through fuse */
 	struct _nlinkfs_data {
 		char *srcdir;
