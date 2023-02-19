@@ -1,0 +1,15 @@
+*.o
+*.deps
+*.log
+*~
+Makefile
+Makefile.in
+config.status
+configure
+aclocal.m4
+autom4te.cache/
+src/config.h.in
+src/config.h
+src/nlinkfs
+src/stamp-h1
+src/Makefile.in
