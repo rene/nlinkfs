@@ -32,10 +32,6 @@
 #include <glib-2.0/glib.h>
 #include <nlinkfs.h>
 
-
-#define DEBUG(fmt, ...) { FILE *fp; fp=fopen("/tmp/nlinkfs", "a+"); fprintf(fp, fmt, ##__VA_ARGS__); fclose(fp); }
-
-
 /**
  * get_realpath
  *
