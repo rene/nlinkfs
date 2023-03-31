@@ -270,12 +270,12 @@ static int nlinkfs_readlink(const char *path, char *buf, size_t size)
 		if (size < 0) {
 			return -EFAULT;
 		} else {
-			if (llen > size) {
+			if (llen >= size) {
 				strncpy(buf, link->str, size);
 				buf[size-1] = '\0';
 			} else {
 				strcpy(buf, link->str);
-				buf[llen-1] = '\0';
+				buf[llen] = '\0';
 			}
 			return 0;
 		}
